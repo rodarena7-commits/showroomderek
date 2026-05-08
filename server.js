@@ -520,7 +520,6 @@ async function connectToWhatsApp() {
                         }
                     }
                 }
-            }
             return;
         }
 
