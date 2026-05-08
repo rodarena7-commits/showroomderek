@@ -425,8 +425,13 @@ async function connectToWhatsApp() {
 
         // Procesar mensajes de GRUPO DE CONFIGURACIÓN
         if (from.endsWith('@g.us')) {
-            // Usar configuración cacheada, o intentar detectarla si no está en caché
-            if (!cachConfigGrupo || from !== cachConfigGrupo.id) {
+            // Verificar si es el grupo de configuración
+            let esGrupoConfig = false;
+
+            if (cachConfigGrupo && from === cachConfigGrupo.id) {
+                esGrupoConfig = true;
+            } else {
+                // Si no está cacheado, intentar detectarlo
                 const groupMetadata = await sock.groupMetadata(from).catch(() => null);
                 if (groupMetadata && groupMetadata.subject.toLowerCase().includes(NOMBRE_GRUPO_CONFIG.toLowerCase())) {
                     cachConfigGrupo = {
@@ -437,90 +442,93 @@ async function connectToWhatsApp() {
                     grupoConfigId = from;
                     ultimaActualizacionConfigGrupo = Date.now();
                     console.log(`✅ Grupo de configuración detectado: "${groupMetadata.subject}" (${from})`);
-                } else {
-                    return; // No es el grupo de configuración
+                    esGrupoConfig = true;
                 }
             }
 
-                // Procesar mensaje del grupo para extraer restricciones o stock
-                if (!msg.key.fromMe) {
-                    const messageId = msg.key.id;
+            // Si es el grupo de configuración, procesarlo
+            if (esGrupoConfig && !msg.key.fromMe) {
+                const messageId = msg.key.id;
 
-                    // Permitir comandos administrativos desde el grupo
-                    if (lowText === '!cerrado') {
-                        estadoAtencion = "cerrado";
-                        mensajeEstadoCerrado = "Hoy no estamos tomando pedidos.";
-                        await sock.sendMessage(from, { text: `🔴 Atención CERRADA por orden del grupo.` });
-                        return;
+                // Permitir comandos administrativos desde el grupo
+                if (lowText === '!cerrado') {
+                    estadoAtencion = "cerrado";
+                    mensajeEstadoCerrado = "Hoy no estamos tomando pedidos.";
+                    await sock.sendMessage(from, { text: `🔴 Atención CERRADA por orden del grupo.` });
+                    return;
+                }
+
+                if (lowText === '!abierto') {
+                    estadoAtencion = "abierto";
+                    mensajeEstadoCerrado = "";
+                    contextoDueño = "";
+                    await sock.sendMessage(from, { text: `✅ Atención ABIERTA. Se aceptan pedidos.` });
+                    return;
+                }
+
+                if (lowText === '!resumen') {
+                    const resumen = formatearResumenDiario(pedidosDelDia);
+                    await sock.sendMessage(from, { text: resumen });
+                    return;
+                }
+
+                if (lowText === '!stock') {
+                    const stockText = Object.entries(stockDisponible).length > 0
+                        ? Object.entries(stockDisponible).map(([k, v]) => `${k}: ${v}`).join('\n')
+                        : 'Sin stock registrado';
+                    await sock.sendMessage(from, { text: `📦 Stock Actual:\n${stockText}` });
+                    return;
+                }
+
+                // Detectar si es un comando de stock (formato: "Remeras: 50, Pantalones: 30")
+                if (text.includes(':') && (text.includes('u') || /\d/.test(text))) {
+                    try {
+                        const items = text.split(',');
+                        const stockParsed = [];
+                        items.forEach(item => {
+                            const [producto, cantidad] = item.split(':');
+                            if (producto && cantidad) {
+                                stockDisponible[producto.trim()] = cantidad.trim();
+                                stockParsed.push(`${producto.trim()}: ${cantidad.trim()}`);
+                            }
+                        });
+                        mensajesConfiguracion.set(messageId, {
+                            tipo: 'stock',
+                            contenido: text,
+                            contexto: `STOCK: ${text}`
+                        });
+                        console.log(`📦 Stock actualizado desde grupo: ${text}`);
+
+                        // Responder en el grupo confirmando lo entendido
+                        const respuestaStock = `✅ Stock actualizado:\n${stockParsed.join('\n')}`;
+                        await sock.sendMessage(from, { text: respuestaStock });
+                    } catch (err) {
+                        console.error('Error procesando stock:', err.message);
+                        await sock.sendMessage(from, { text: '❌ Error procesando stock' });
                     }
+                } else {
+                    // Procesar como restricción
+                    const nuevoContexto = await procesarContextoDueño(text);
+                    if (nuevoContexto) {
+                        contextoDueño = nuevoContexto;
+                        mensajesConfiguracion.set(messageId, {
+                            tipo: 'restriccion',
+                            contenido: text,
+                            contexto: nuevoContexto
+                        });
+                        console.log(`📝 Contexto actualizado desde grupo: ${nuevoContexto}`);
 
-                    if (lowText === '!abierto') {
-                        estadoAtencion = "abierto";
-                        mensajeEstadoCerrado = "";
-                        contextoDueño = "";
-                        await sock.sendMessage(from, { text: `✅ Atención ABIERTA. Se aceptan pedidos.` });
-                        return;
-                    }
-
-                    if (lowText === '!resumen') {
-                        const resumen = formatearResumenDiario(pedidosDelDia);
-                        await sock.sendMessage(from, { text: resumen });
-                        return;
-                    }
-
-                    if (lowText === '!stock') {
-                        const stockText = Object.entries(stockDisponible).length > 0
-                            ? Object.entries(stockDisponible).map(([k, v]) => `${k}: ${v}`).join('\n')
-                            : 'Sin stock registrado';
-                        await sock.sendMessage(from, { text: `📦 Stock Actual:\n${stockText}` });
-                        return;
-                    }
-
-                    // Detectar si es un comando de stock (formato: "Remeras: 50, Pantalones: 30")
-                    if (text.includes(':') && (text.includes('u') || /\d/.test(text))) {
-                        try {
-                            const items = text.split(',');
-                            const stockParsed = [];
-                            items.forEach(item => {
-                                const [producto, cantidad] = item.split(':');
-                                if (producto && cantidad) {
-                                    stockDisponible[producto.trim()] = cantidad.trim();
-                                    stockParsed.push(`${producto.trim()}: ${cantidad.trim()}`);
-                                }
-                            });
-                            mensajesConfiguracion.set(messageId, {
-                                tipo: 'stock',
-                                contenido: text,
-                                contexto: `STOCK: ${text}`
-                            });
-                            console.log(`📦 Stock actualizado desde grupo: ${text}`);
-
-                            // Responder en el grupo confirmando lo entendido
-                            const respuestaStock = `✅ Stock actualizado:\n${stockParsed.join('\n')}`;
-                            await sock.sendMessage(from, { text: respuestaStock });
-                        } catch (err) {
-                            console.error('Error procesando stock:', err.message);
-                            await sock.sendMessage(from, { text: '❌ Error procesando stock' });
-                        }
-                    } else {
-                        // Procesar como restricción
-                        const nuevoContexto = await procesarContextoDueño(text);
-                        if (nuevoContexto) {
-                            contextoDueño = nuevoContexto;
-                            mensajesConfiguracion.set(messageId, {
-                                tipo: 'restriccion',
-                                contenido: text,
-                                contexto: nuevoContexto
-                            });
-                            console.log(`📝 Contexto actualizado desde grupo: ${nuevoContexto}`);
-
-                            // Responder en el grupo confirmando la restricción entendida
-                            const respuestaRestriccion = `✅ Restricción activa:\n${nuevoContexto}`;
-                            await sock.sendMessage(from, { text: respuestaRestriccion });
-                        }
+                        // Responder en el grupo confirmando la restricción entendida
+                        const respuestaRestriccion = `✅ Restricción activa:\n${nuevoContexto}`;
+                        await sock.sendMessage(from, { text: respuestaRestriccion });
                     }
                 }
-            return;
+            }
+
+            // Si es el grupo de configuración, no procesarlo como cliente
+            if (esGrupoConfig) {
+                return;
+            }
         }
 
         // Procesar comandos del dueño (incluso si fromMe es true)
