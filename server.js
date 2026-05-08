@@ -34,8 +34,11 @@ const NUMERO_DUENO = "5491158660344@s.whatsapp.net"; // Rodrigo +5491158660344
 // ============================================================
 // GRUPO DE CONFIGURACIÓN — donde el dueño escribe restricciones
 // ============================================================
-const NOMBRE_GRUPO_CONFIG = "Showroom Derek"; // Nombre del grupo privado con Rodrigo, Romina y el bot
+const NOMBRE_GRUPO_CONFIG = "configuracion"; // Nombre EXACTO del grupo privado con Rodrigo, Romina y el bot
 let grupoConfigId = null; // Se detecta automáticamente
+let cachConfigGrupo = null; // Cachea metadatos del grupo para evitar lecturas en cada mensaje
+let ultimaActualizacionConfigGrupo = 0; // Timestamp de la última actualización
+const INTERVALO_REFRESH_CONFIG = 5 * 60 * 1000; // Actualizar cache cada 5 minutos
 
 // ============================================================
 // STOCK DISPONIBLE — se actualiza desde un chat consigo mismo
@@ -244,6 +247,35 @@ function formatearResumenDiario(pedidos) {
 }
 
 // ============================================================
+// CARGAR Y CACHEAR CONFIGURACIÓN DEL GRUPO
+// ============================================================
+async function cargarYCachearConfigGrupo() {
+    try {
+        if (!sock || !sock.groupFetchAllParticipating) return;
+
+        const grupos = await sock.groupFetchAllParticipating().catch(() => ({}));
+
+        for (const [jid, grupo] of Object.entries(grupos)) {
+            if (grupo.subject && grupo.subject.toLowerCase().includes(NOMBRE_GRUPO_CONFIG.toLowerCase())) {
+                cachConfigGrupo = {
+                    id: jid,
+                    subject: grupo.subject,
+                    participants: grupo.participants
+                };
+                grupoConfigId = jid;
+                ultimaActualizacionConfigGrupo = Date.now();
+                console.log(`✅ Grupo de configuración cacheado: "${grupo.subject}" (${jid})`);
+                return;
+            }
+        }
+
+        console.warn(`⚠️ No se encontró grupo que contenga "${NOMBRE_GRUPO_CONFIG}". Intentaremos detectarlo en el próximo mensaje.`);
+    } catch (error) {
+        console.error('❌ Error al cachear grupo de configuración:', error.message);
+    }
+}
+
+// ============================================================
 // SCHEDULER: envía resumen todos los días a las 18:00 (ARG)
 // ============================================================
 function iniciarScheduler() {
@@ -302,7 +334,7 @@ async function connectToWhatsApp() {
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
         },
         logger: pino({ level: 'silent' }),
-        browser: ["Supremo Corte", "Chrome", "1.0.0"],
+        browser: ["Showroom Derek", "Chrome", "1.0.0"],
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 0,
         keepAliveIntervalMs: 10000
@@ -330,6 +362,10 @@ async function connectToWhatsApp() {
         } else if (connection === 'open') {
             lastQR = "CONECTADO";
             console.log('✅ ¡SHOWROOM DEREK ONLINE!');
+            // Cargar configuración del grupo
+            cargarYCachearConfigGrupo();
+            // Actualizar cache cada 5 minutos
+            setInterval(cargarYCachearConfigGrupo, INTERVALO_REFRESH_CONFIG);
             // Iniciar scheduler SOLO cuando WhatsApp está conectado
             iniciarScheduler();
         }
@@ -389,11 +425,22 @@ async function connectToWhatsApp() {
 
         // Procesar mensajes de GRUPO DE CONFIGURACIÓN
         if (from.endsWith('@g.us')) {
-            // Intentar detectar el grupo "configuracion"
-            const groupMetadata = await sock.groupMetadata(from).catch(() => null);
-            if (groupMetadata && groupMetadata.subject.toLowerCase().includes('configuracion')) {
-                grupoConfigId = from;
-                console.log(`📋 Leyendo configuración del grupo: ${groupMetadata.subject}`);
+            // Usar configuración cacheada, o intentar detectarla si no está en caché
+            if (!cachConfigGrupo || from !== cachConfigGrupo.id) {
+                const groupMetadata = await sock.groupMetadata(from).catch(() => null);
+                if (groupMetadata && groupMetadata.subject.toLowerCase().includes(NOMBRE_GRUPO_CONFIG.toLowerCase())) {
+                    cachConfigGrupo = {
+                        id: from,
+                        subject: groupMetadata.subject,
+                        participants: groupMetadata.participants
+                    };
+                    grupoConfigId = from;
+                    ultimaActualizacionConfigGrupo = Date.now();
+                    console.log(`✅ Grupo de configuración detectado: "${groupMetadata.subject}" (${from})`);
+                } else {
+                    return; // No es el grupo de configuración
+                }
+            }
 
                 // Procesar mensaje del grupo para extraer restricciones o stock
                 if (!msg.key.fromMe) {
