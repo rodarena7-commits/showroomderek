@@ -600,7 +600,7 @@ async function connectToWhatsApp() {
         if (msg.key.fromMe) return;
 
         if (lowText === '!ping') {
-            await sock.sendMessage(from, { text: '✅ Carnicería SHOWROOM DEREK online.' });
+            await sock.sendMessage(from, { text: '✅ SHOWROOM DEREK online.' });
             return;
         }
 
@@ -632,7 +632,7 @@ async function connectToWhatsApp() {
         }
 
         // Comando admin: ver stock actual
-        if (from === NUMERO_DUENO && lowText === '!stock') {
+        if (esAdmin(from) && lowText === '!stock') {
             const stockText = Object.entries(stockDisponible).length > 0
                 ? Object.entries(stockDisponible).map(([k, v]) => `${k}: ${v}`).join('\n')
                 : 'Sin stock registrado';
@@ -640,9 +640,19 @@ async function connectToWhatsApp() {
             return;
         }
 
+        // Ignorar mensajes en grupos si no mencionan al bot
+        if (from.endsWith('@g.us')) {
+            const mencionaDerek = text.includes('@Derek') || text.toLowerCase().includes('derek');
+            if (!mencionaDerek) {
+                return;
+            }
+            // Si menciona, limpiar el texto para procesar
+            // (quitar la mención y procesar la consulta)
+        }
+
         // Verificar si estamos atendiendo
         if (estadoAtencion === "cerrado") {
-            const mensajeCierre = mensajeEstadoCerrado || "Disculpe, hoy no estamos tomando pedidos. Volveremos a atender próximamente.\n\n*— Carnicería SHOWROOM DEREK*";
+            const mensajeCierre = mensajeEstadoCerrado || "Disculpe, hoy no estamos tomando pedidos. Volveremos a atender próximamente.\n\n*— Showroom Derek*";
             await sock.sendMessage(from, { text: mensajeCierre });
             return;
         }
@@ -664,15 +674,15 @@ async function connectToWhatsApp() {
             const response = await groq.chat.completions.create({
                 model: "llama-3.3-70b-versatile",
                 messages: [
-                    { 
-                        role: "system", 
-                        content: `Sos el asistente virtual de SHOWROOM DEREK, una carnicería de primer nivel.
+                    {
+                        role: "system",
+                        content: `Sos el asistente virtual de SHOWROOM DEREK, una tienda de ropa de primer nivel.
 Atendé con TOTAL FORMALIDAD. Usá "usted" siempre. Sé cálido pero correcto y profesional.
 
 == FLUJO DE ATENCIÓN ==
 1. Saludar y preguntar en qué puede ayudar.
-2. Informar precios consultados.
-3. Armar el pedido: preguntar prenda, cantidad y talle (si aplica).
+2. Informar precios y características de prendas consultadas.
+3. Armar el pedido: preguntar prenda, cantidad, talle y color (si aplica).
 4. Preguntar si desea ENVÍO A DOMICILIO o RETIRO EN LOCAL.
    - Si elige envío: pedirle la dirección completa (calle, número, localidad).
    - Si elige retiro: no pedir dirección.
@@ -689,15 +699,6 @@ ${LISTA_DE_PRECIOS}
 ${Object.entries(stockDisponible).length > 0
     ? Object.entries(stockDisponible).map(([k, v]) => `${k}: ${v}`).join('\n')
     : '(Consultá al dueño sobre disponibilidad)'}
-
-== EQUIVALENCIAS ==
-- Asado con hueso / costilla → Asado de tira
-- Picaña / picanha → Tapa de cuadril
-- Palomita → Colita de cuadril
-- Ossobuco → Garrón
-- Bife de chorizo → Bife angosto
-- Ojo de bife → Bife ancho sin tapa
-- Chinchulín → Chinchulines
 
 == HORARIO ==
 Lunes a viernes: 7:00–13:00 y 17:00–20:00. Sábados: 7:00–13:00.
@@ -734,7 +735,7 @@ ${contextoDueño}
 
                 // Enviar mensaje sin la etiqueta técnica + firma
                 const mensajeLimpio = aiResponse.replace('[PEDIDO_CONFIRMADO]', '').trim();
-                const mensajeConFirma = `${mensajeLimpio}\n\n*— Carnicería SHOWROOM DEREK*`;
+                const mensajeConFirma = `${mensajeLimpio}\n\n*— Showroom Derek*`;
                 await sock.sendMessage(from, { text: mensajeConFirma });
             } else {
                 await sock.sendMessage(from, { text: aiResponse });
