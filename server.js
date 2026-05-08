@@ -27,9 +27,11 @@ const groq = new OpenAI({
 });
 
 // ============================================================
-// NÚMERO DUEÑO — recibe el resumen diario a las 18hs
+// ADMINISTRADORES — pueden dar órdenes por privado
 // ============================================================
 const NUMERO_DUENO = "5491158660344@s.whatsapp.net"; // Rodrigo +5491158660344
+const NUMERO_ADMIN_2 = "5491138308360@s.whatsapp.net"; // Romina +5491138308360
+const NUMEROS_ADMIN = [NUMERO_DUENO, NUMERO_ADMIN_2]; // Lista de admins
 
 // ============================================================
 // GRUPO DE CONFIGURACIÓN — donde el dueño escribe restricciones
@@ -247,6 +249,36 @@ function formatearResumenDiario(pedidos) {
 }
 
 // ============================================================
+// VERIFICAR SI ES ADMIN
+// ============================================================
+function esAdmin(jid) {
+    return NUMEROS_ADMIN.includes(jid);
+}
+
+// ============================================================
+// ENVIAR MENSAJE AL GRUPO Y A CADA MIEMBRO POR PRIVADO
+// ============================================================
+async function enviarAlGrupoYPrivados(grupoId, mensaje) {
+    try {
+        // Enviar al grupo
+        await sock.sendMessage(grupoId, { text: mensaje });
+
+        // Enviar a cada participante del grupo por privado
+        if (cachConfigGrupo && cachConfigGrupo.participants) {
+            for (const participant of cachConfigGrupo.participants) {
+                const jid = participant.id;
+                // No enviar al bot a sí mismo
+                if (!jid.includes(sock.user.id)) {
+                    await sock.sendMessage(jid, { text: mensaje });
+                }
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error al enviar mensaje al grupo y privados:', error.message);
+    }
+}
+
+// ============================================================
 // CARGAR Y CACHEAR CONFIGURACIÓN DEL GRUPO
 // ============================================================
 async function cargarYCachearConfigGrupo() {
@@ -454,7 +486,7 @@ async function connectToWhatsApp() {
                 if (lowText === '!cerrado') {
                     estadoAtencion = "cerrado";
                     mensajeEstadoCerrado = "Hoy no estamos tomando pedidos.";
-                    await sock.sendMessage(from, { text: `🔴 Atención CERRADA por orden del grupo.` });
+                    await enviarAlGrupoYPrivados(from, `🔴 Atención CERRADA por orden del grupo.`);
                     return;
                 }
 
@@ -462,13 +494,13 @@ async function connectToWhatsApp() {
                     estadoAtencion = "abierto";
                     mensajeEstadoCerrado = "";
                     contextoDueño = "";
-                    await sock.sendMessage(from, { text: `✅ Atención ABIERTA. Se aceptan pedidos.` });
+                    await enviarAlGrupoYPrivados(from, `✅ Atención ABIERTA. Se aceptan pedidos.`);
                     return;
                 }
 
                 if (lowText === '!resumen') {
                     const resumen = formatearResumenDiario(pedidosDelDia);
-                    await sock.sendMessage(from, { text: resumen });
+                    await enviarAlGrupoYPrivados(from, resumen);
                     return;
                 }
 
@@ -476,7 +508,7 @@ async function connectToWhatsApp() {
                     const stockText = Object.entries(stockDisponible).length > 0
                         ? Object.entries(stockDisponible).map(([k, v]) => `${k}: ${v}`).join('\n')
                         : 'Sin stock registrado';
-                    await sock.sendMessage(from, { text: `📦 Stock Actual:\n${stockText}` });
+                    await enviarAlGrupoYPrivados(from, `📦 Stock Actual:\n${stockText}`);
                     return;
                 }
 
@@ -501,10 +533,10 @@ async function connectToWhatsApp() {
 
                         // Responder en el grupo confirmando lo entendido
                         const respuestaStock = `✅ Stock actualizado:\n${stockParsed.join('\n')}`;
-                        await sock.sendMessage(from, { text: respuestaStock });
+                        await enviarAlGrupoYPrivados(from, respuestaStock);
                     } catch (err) {
                         console.error('Error procesando stock:', err.message);
-                        await sock.sendMessage(from, { text: '❌ Error procesando stock' });
+                        await enviarAlGrupoYPrivados(from, '❌ Error procesando stock');
                     }
                 } else {
                     // Procesar como restricción
@@ -520,7 +552,7 @@ async function connectToWhatsApp() {
 
                         // Responder en el grupo confirmando la restricción entendida
                         const respuestaRestriccion = `✅ Restricción activa:\n${nuevoContexto}`;
-                        await sock.sendMessage(from, { text: respuestaRestriccion });
+                        await enviarAlGrupoYPrivados(from, respuestaRestriccion);
                     }
                 }
             }
@@ -531,8 +563,8 @@ async function connectToWhatsApp() {
             }
         }
 
-        // Procesar comandos del dueño (incluso si fromMe es true)
-        if (from === NUMERO_DUENO) {
+        // Procesar comandos de admins por privado (incluso si fromMe es true)
+        if (esAdmin(from)) {
             // Cambiar estado a CERRADO
             if (lowText.includes('no tomamos pedidos') || lowText === '!cerrado') {
                 estadoAtencion = "cerrado";
@@ -550,7 +582,7 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            // Procesar cualquier otro mensaje del dueño para extraer restricciones
+            // Procesar cualquier otro mensaje del admin para extraer restricciones
             if (!lowText.startsWith('!') &&
                 lowText !== '!resumen' &&
                 lowText !== '!stock' &&
@@ -573,14 +605,14 @@ async function connectToWhatsApp() {
         }
 
         // Comando admin: forzar envío del resumen (para testing)
-        if (from === NUMERO_DUENO && lowText === '!resumen') {
+        if (esAdmin(from) && lowText === '!resumen') {
             const resumen = formatearResumenDiario(pedidosDelDia);
             await sock.sendMessage(from, { text: resumen });
             return;
         }
 
         // Comando admin: actualizar stock disponible
-        if (from === NUMERO_DUENO && lowText.startsWith('!stock ')) {
+        if (esAdmin(from) && lowText.startsWith('!stock ')) {
             const stockData = text.substring(7).trim();
             try {
                 // Parsear formato: "Remeras: 50, Pantalones: 30"
