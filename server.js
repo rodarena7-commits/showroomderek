@@ -29,12 +29,12 @@ const groq = new OpenAI({
 // ============================================================
 // NÚMERO DUEÑO — recibe el resumen diario a las 18hs
 // ============================================================
-const NUMERO_DUENO = "541123484720@s.whatsapp.net"; // +5491123484720
+const NUMERO_DUENO = "5491158660344@s.whatsapp.net"; // Rodrigo +5491158660344
 
 // ============================================================
 // GRUPO DE CONFIGURACIÓN — donde el dueño escribe restricciones
 // ============================================================
-const NOMBRE_GRUPO_CONFIG = "configuracion"; // Nombre del grupo privado
+const NOMBRE_GRUPO_CONFIG = "Showroom Derek"; // Nombre del grupo privado con Rodrigo, Romina y el bot
 let grupoConfigId = null; // Se detecta automáticamente
 
 // ============================================================
@@ -66,73 +66,56 @@ let pedidosDelDia = []; // Array de objetos de pedido confirmado
 const conversaciones = new Map(); // jid → array de mensajes
 
 // ============================================================
-// LISTA DE PRECIOS
+// LISTA DE PRECIOS - CATÁLOGO DE ROPA
 // ============================================================
 const LISTA_DE_PRECIOS = `
-=== CARNES BOVINAS ===
-Asado de tira: $8.500/kg
-Vacío: $9.200/kg
-Bife ancho (con tapa): $12.500/kg
-Bife angosto / Bife de chorizo: $13.000/kg
-Bife ancho sin tapa / Ojo de bife: $12.800/kg
-Lomo: $18.000/kg
-Cuadril (con tapa): $10.800/kg
-Tapa de cuadril (picanha): $11.500/kg
-Colita de cuadril / Palomita: $10.200/kg
-Corazón de cuadril: $11.000/kg
-Nalga de adentro: $9.800/kg
-Nalga de afuera (con peceto): $9.500/kg
-Peceto: $9.000/kg
-Bola de lomo: $9.300/kg
-Carnaza cuadrada: $7.800/kg
-Carnaza de paleta: $7.500/kg
-Matambre: $8.200/kg
-Pecho: $6.500/kg
-Garrón / Osobuco: $7.200/kg
-Tortuguita: $8.800/kg
-Entraña fina: $14.500/kg
-Entraña gruesa: $13.000/kg
-Bife de vacío: $9.200/kg
-Aguja: $7.300/kg
-Marucha: $7.600/kg
-Falda: $6.800/kg
-Tapa de bife ancho: $9.500/kg
-Chingolo de paleta: $7.400/kg
-Cogote: $5.500/kg
+=== REMERAS ===
+Remera básica (Nueva): $1.500
+Remera deportiva (Nueva con etiqueta): $2.500
+Remera estampada (Nueva): $2.000
+Remera como nueva: $800
+Remera usada (buen estado): $500
 
-=== CARNES PORCINAS ===
-Bondiola: $8.900/kg
-Costeletas de cerdo: $9.500/kg
-Lomo de cerdo: $10.200/kg
-Paleta de cerdo: $7.800/kg
-Panceta: $7.500/kg
-Jamón sin hueso: $9.800/kg
-Pechito / Spare ribs: $8.200/kg
+=== BUZOS Y CAMPERAS ===
+Buzo básico (Nueva con etiqueta): $3.500
+Buzo deportivo (Nueva): $4.000
+Campera de jean (Nueva): $5.500
+Campera de jean (Usada como nueva): $2.500
+Buzo usada (buen estado): $1.500
 
-=== CARNES OVINAS ===
-Paleta de cordero: $12.500/kg
-Pierna de cordero: $13.800/kg
-Costillar de cordero (rack): $14.500/kg
-Lomo de cordero: $16.000/kg
-Garrón ovino: $9.500/kg
+=== PANTALONES ===
+Pantalón de jean (Nueva con etiqueta): $4.000
+Pantalón de tela (Nueva): $3.500
+Pantalón deportivo (Nueva): $3.000
+Pantalón de jean (Como nueva): $1.800
+Pantalón usada (buen estado): $1.000
 
-=== ACHURAS Y MENUDENCIAS ===
-Chinchulines: $5.200/kg
-Mondongo: $4.800/kg
-Mollejas: $9.500/kg
-Riñones: $4.500/kg
-Hígado: $4.200/kg
-Corazón: $5.000/kg
-Lengua: $7.800/kg
-Rabo: $6.500/kg
-Caracú: $3.500/kg
-Morcilla: $1.200/u
-Chorizo parrillero: $1.500/u
+=== FALDAS Y VESTIDOS ===
+Falda de tela (Nueva con etiqueta): $3.000
+Vestido casual (Nueva): $4.500
+Vestido de fiesta (Nueva): $6.000
+Falda usada (buen estado): $1.200
+Vestido usado (como nueva): $2.500
 
-=== EMBUTIDOS ===
-Chorizo seco: $2.800/u
-Salchicha parrillera: $1.000/u
-Salame: $3.200/100g
+=== PRENDAS ÍNTIMAS ===
+Pack de medias (Nueva): $800
+Ropa interior pack x3 (Nueva): $1.500
+Corpiño (Nueva con etiqueta): $2.500
+Medias usadas (buen estado): $300
+
+=== ACCESORIOS ===
+Cinturones (Nueva): $1.200
+Gorras (Nueva): $1.500
+Bufandas (Nueva): $1.000
+Sombreros (Nueva): $2.000
+Mochilas (Nueva): $3.500
+
+=== PRENDAS ESPECIALES ===
+Abrigo de invierno (Nueva con etiqueta): $8.000
+Abrigo de invierno (Usada como nueva): $3.500
+Piloto (Nueva): $6.500
+Sudadera premium (Nueva): $5.000
+Conjunto deportivo (Nueva): $4.500
 `;
 
 // ============================================================
@@ -145,11 +128,11 @@ async function procesarContextoDueño(mensaje) {
             messages: [
                 {
                     role: "system",
-                    content: `Sos un analizador de instrucciones de un vendedor de carnes.
+                    content: `Sos un analizador de instrucciones de un vendedor de ropa.
 Lee el mensaje del vendedor y extrae TODAS las restricciones, limitaciones o instrucciones especiales para hoy.
 Responde en formato texto claro y conciso. Por ejemplo:
 - Si dice "hoy no se hacen pedidos a domicilios", responde: "RESTRICCIÓN: Solo retiro en local, NO envío a domicilio"
-- Si dice "no hay Lomo", responde: "PRODUCTOS NO DISPONIBLES: Lomo"
+- Si dice "no hay Remeras", responde: "PRODUCTOS NO DISPONIBLES: Remeras"
 - Si dice algo especial, resúmelo claramente
 
 Si el mensaje es solo un comando técnico (!stock, !abierto, !cerrado) o no contiene restricciones, responde: "SIN RESTRICCIONES"`
@@ -187,7 +170,7 @@ async function extraerDatosPedido(historial, numeroCliente) {
 Respondé ÚNICAMENTE con un JSON válido con esta estructura exacta, sin texto adicional:
 {
   "items": [
-    { "producto": "nombre del corte", "cantidad": "número con unidad (ej: 2 kg, 3 unidades)", "subtotal": número_en_pesos_sin_puntos }
+    { "producto": "nombre de la prenda", "cantidad": "número con unidad (ej: 2 remeras, 3 pantalones)", "subtotal": número_en_pesos_sin_puntos }
   ],
   "total": número_en_pesos_sin_puntos,
   "entrega": "domicilio" o "retiro en local",
@@ -227,11 +210,11 @@ function formatearResumenDiario(pedidos) {
     });
 
     if (pedidos.length === 0) {
-        return `📋 *RESUMEN DIARIO — SUPREMO CORTE*\n📅 ${fecha}\n\nNo se registraron pedidos confirmados el día de hoy.`;
+        return `📋 *RESUMEN DIARIO — SHOWROOM DEREK*\n📅 ${fecha}\n\nNo se registraron pedidos confirmados el día de hoy.`;
     }
 
     let totalGeneral = 0;
-    let texto = `📋 *RESUMEN DIARIO — SUPREMO CORTE*\n📅 ${fecha}\n${'─'.repeat(30)}\n\n`;
+    let texto = `📋 *RESUMEN DIARIO — SHOWROOM DEREK*\n📅 ${fecha}\n${'─'.repeat(30)}\n\n`;
 
     pedidos.forEach((p, i) => {
         texto += `🛒 *PEDIDO #${i + 1}*\n`;
@@ -346,7 +329,7 @@ async function connectToWhatsApp() {
             }
         } else if (connection === 'open') {
             lastQR = "CONECTADO";
-            console.log('✅ ¡SUPREMO CORTE ONLINE!');
+            console.log('✅ ¡SHOWROOM DEREK ONLINE!');
             // Iniciar scheduler SOLO cuando WhatsApp está conectado
             iniciarScheduler();
         }
@@ -446,8 +429,8 @@ async function connectToWhatsApp() {
                         return;
                     }
 
-                    // Detectar si es un comando de stock (formato: "Asado: 50kg, Lomo: 30kg")
-                    if (text.includes(':') && text.includes('kg')) {
+                    // Detectar si es un comando de stock (formato: "Remeras: 50, Pantalones: 30")
+                    if (text.includes(':') && (text.includes('u') || /\d/.test(text))) {
                         try {
                             const items = text.split(',');
                             const stockParsed = [];
@@ -531,7 +514,7 @@ async function connectToWhatsApp() {
         if (msg.key.fromMe) return;
 
         if (lowText === '!ping') {
-            await sock.sendMessage(from, { text: '✅ Carnicería SUPREMO CORTE online.' });
+            await sock.sendMessage(from, { text: '✅ Carnicería SHOWROOM DEREK online.' });
             return;
         }
 
@@ -546,7 +529,7 @@ async function connectToWhatsApp() {
         if (from === NUMERO_DUENO && lowText.startsWith('!stock ')) {
             const stockData = text.substring(7).trim();
             try {
-                // Parsear formato: "Asado de tira: 50kg, Lomo: 30kg"
+                // Parsear formato: "Remeras: 50, Pantalones: 30"
                 const items = stockData.split(',');
                 items.forEach(item => {
                     const [producto, cantidad] = item.split(':');
@@ -557,7 +540,7 @@ async function connectToWhatsApp() {
                 await sock.sendMessage(from, { text: `✅ Stock actualizado:\n${JSON.stringify(stockDisponible, null, 2)}` });
                 return;
             } catch (err) {
-                await sock.sendMessage(from, { text: '❌ Error al procesar stock. Formato: !stock Asado: 50kg, Lomo: 30kg' });
+                await sock.sendMessage(from, { text: '❌ Error al procesar stock. Formato: !stock Remeras: 50, Pantalones: 30' });
                 return;
             }
         }
@@ -573,7 +556,7 @@ async function connectToWhatsApp() {
 
         // Verificar si estamos atendiendo
         if (estadoAtencion === "cerrado") {
-            const mensajeCierre = mensajeEstadoCerrado || "Disculpe, hoy no estamos tomando pedidos. Volveremos a atender próximamente.\n\n*— Carnicería SUPREMO CORTE*";
+            const mensajeCierre = mensajeEstadoCerrado || "Disculpe, hoy no estamos tomando pedidos. Volveremos a atender próximamente.\n\n*— Carnicería SHOWROOM DEREK*";
             await sock.sendMessage(from, { text: mensajeCierre });
             return;
         }
@@ -597,13 +580,13 @@ async function connectToWhatsApp() {
                 messages: [
                     { 
                         role: "system", 
-                        content: `Sos el asistente virtual de SUPREMO CORTE, una carnicería de primer nivel.
+                        content: `Sos el asistente virtual de SHOWROOM DEREK, una carnicería de primer nivel.
 Atendé con TOTAL FORMALIDAD. Usá "usted" siempre. Sé cálido pero correcto y profesional.
 
 == FLUJO DE ATENCIÓN ==
 1. Saludar y preguntar en qué puede ayudar.
 2. Informar precios consultados.
-3. Armar el pedido: preguntar corte, cantidad en kg o unidades.
+3. Armar el pedido: preguntar prenda, cantidad y talle (si aplica).
 4. Preguntar si desea ENVÍO A DOMICILIO o RETIRO EN LOCAL.
    - Si elige envío: pedirle la dirección completa (calle, número, localidad).
    - Si elige retiro: no pedir dirección.
@@ -665,7 +648,7 @@ ${contextoDueño}
 
                 // Enviar mensaje sin la etiqueta técnica + firma
                 const mensajeLimpio = aiResponse.replace('[PEDIDO_CONFIRMADO]', '').trim();
-                const mensajeConFirma = `${mensajeLimpio}\n\n*— Carnicería SUPREMO CORTE*`;
+                const mensajeConFirma = `${mensajeLimpio}\n\n*— Carnicería SHOWROOM DEREK*`;
                 await sock.sendMessage(from, { text: mensajeConFirma });
             } else {
                 await sock.sendMessage(from, { text: aiResponse });
@@ -688,14 +671,14 @@ connectToWhatsApp();
 app.get('/qr', (req, res) => {
     if (lastQR === "CONECTADO") return res.send(`
         <div style="text-align:center;padding:50px;font-family:sans-serif;">
-            <h1>✅ SUPREMO CORTE — Bot Activo</h1>
+            <h1>✅ SHOWROOM DEREK — Bot Activo</h1>
             <p>El asistente virtual está conectado y operativo.</p>
         </div>
     `);
     if (!lastQR) return res.send('<h1>Iniciando...</h1><p>Recargá en 10 segundos.</p>');
     res.send(`
         <div style="text-align:center;padding:50px;font-family:sans-serif;">
-            <h2>🥩 Vincular Bot — SUPREMO CORTE</h2>
+            <h2>🥩 Vincular Bot — SHOWROOM DEREK</h2>
             <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(lastQR)}&size=300x300"/>
             <p>Escaneá desde WhatsApp → Dispositivos Vinculados</p>
         </div>
@@ -710,7 +693,7 @@ app.get('/pedidos', (req, res) => {
     });
 });
 
-app.get('/', (req, res) => res.send('🥩 SUPREMO CORTE — Asistente Virtual Activo'));
+app.get('/', (req, res) => res.send('🥩 SHOWROOM DEREK — Asistente Virtual Activo'));
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🥩 SUPREMO CORTE corriendo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🥩 SHOWROOM DEREK corriendo en puerto ${PORT}`));
